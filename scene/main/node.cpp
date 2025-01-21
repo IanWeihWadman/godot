@@ -1829,6 +1829,25 @@ Node *Node::find_child(const String &p_pattern, bool p_recursive, bool p_owned) 
 	return nullptr;
 }
 
+Node *Node::find_child_by_name(const StringName &p_name) const {
+	ERR_THREAD_GUARD_V(nullptr);
+	_update_children_cache();
+
+	Node *const *cptr = data.children_cache.ptr();
+	int ccount = data.children_cache.size();
+	for (int i = 0; i < ccount; i++) {
+		if (cptr[i]->data.name == p_name) {
+			return cptr[i];
+		}
+
+		Node *ret = cptr[i]->find_child_by_name(p_name);
+		if (ret) {
+			return ret;
+		}
+	}
+	return nullptr;
+}
+
 // Finds child nodes based on their name using pattern matching, or class name,
 // or both (either pattern or type can be left empty).
 // Can be recursive or not, and limited to owned nodes.
@@ -3507,6 +3526,7 @@ void Node::_bind_methods() {
 	ClassDB::bind_method(D_METHOD("get_node_or_null", "path"), &Node::get_node_or_null);
 	ClassDB::bind_method(D_METHOD("get_parent"), &Node::get_parent);
 	ClassDB::bind_method(D_METHOD("find_child", "pattern", "recursive", "owned"), &Node::find_child, DEFVAL(true), DEFVAL(true));
+	ClassDB::bind_method(D_METHOD("find_child_by_name", "name"), &Node::find_child_by_name);
 	ClassDB::bind_method(D_METHOD("find_children", "pattern", "type", "recursive", "owned"), &Node::find_children, DEFVAL(""), DEFVAL(true), DEFVAL(true));
 	ClassDB::bind_method(D_METHOD("find_parent", "pattern"), &Node::find_parent);
 	ClassDB::bind_method(D_METHOD("has_node_and_resource", "path"), &Node::has_node_and_resource);

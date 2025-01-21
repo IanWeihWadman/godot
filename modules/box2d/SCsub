@@ -1,0 +1,17 @@
+#!/usr/bin/env python
+
+Import("env")
+Import("env_modules")
+
+# Clone the environment for your module.
+env_box2d = env_modules.Clone()
+
+# Add your module's source files to the global list.
+env_box2d.add_source_files(env.modules_sources, "*.cpp")
+
+current_dir = Dir('.').abspath
+
+# Explicitly append Box2D to the global LIBS for linking at the right time.
+env.Prepend(LIBS=['box2d'])
+env.Prepend(LIBPATH=[current_dir + '/lib/'])
+
