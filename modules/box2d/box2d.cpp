@@ -117,13 +117,14 @@ struct Box2dImpl {
 				}
 			}
 
-			if (entity.value.movementPaused > 0) {
+			if (entity.value.movementPaused > 0 || (!entity.value.activePath && !entity.value.forcedVelocity)) {
 				entity.value.wantedVelocity = b2Vec2_zero;
 			} else if (entity.value.activePath) {
 				if ((entity.value.activePath->GetNextWaypoint() - worldPosition).length_squared() < entity.value.movementSpeed * entity.value.movementSpeed) {
 					entity.value.activePath->PopWaypoint();
 
 					if (!entity.value.activePath->IsValid()) {
+						delete entity.value.activePath;
 						entity.value.activePath = nullptr;
 						entity.value.wantedVelocity = b2Vec2_zero;
 					}
