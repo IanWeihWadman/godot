@@ -30,6 +30,8 @@
 
 #include "box2d.h"
 #include "box2d/box2d.h"
+#include "pathfinding.h"
+#include <optional>
 
 namespace {
 
@@ -48,27 +50,39 @@ Vector2 PhysicsSpaceToWorldSpace(b2Vec2 p_b2Vec) {
 
 } //namespace
 
-class Box2dImpl {
+struct Box2dImpl {
 	struct PhysicsEntity {
 		PhysicsEntity() = default;
 
-		PhysicsEntity(b2BodyId p_bodyId, float p_weight) :
+		PhysicsEntity(b2BodyId p_bodyId, float p_weight, float p_radius, float p_speed) :
 				bodyId{ p_bodyId },
 				wantedVelocity{ b2Vec2_zero },
 				weight{ p_weight },
-				control{ 1.0f } {}
+				control{ 1.0f },
+				radius{ p_radius },
+				movementSpeed{ p_speed },
+				activePath{ nullptr },
+				movementPaused{ 0 } {}
+
+		void CancelMove() {
+			if (activePath) {
+				delete activePath;
+			}
+			activePath = nullptr;
+		}
 
 		b2Vec2 wantedVelocity;
+		std::optional<b2Vec2> forcedVelocity;
+		std::optional<int32_t> pursueTarget;
 		b2BodyId bodyId;
 		float weight;
 		float control;
+		float radius;
+		float movementSpeed;
+		Path *activePath;
+		int32_t movementPaused;
 	};
 
-	b2WorldId worldId;
-	HashMap<int32_t, b2BodyId> obstacleLookup;
-	HashMap<int32_t, PhysicsEntity> entityLookup;
-
-public:
 	Box2dImpl() {
 		auto worldDef = b2DefaultWorldDef();
 		worldDef.gravity = b2Vec2_zero;
@@ -80,7 +94,46 @@ public:
 	}
 
 	void StepWorld() {
+		//CollisionAvoidancePass();
+
 		for (auto &entity : entityLookup) {
+			auto worldPosition = PhysicsSpaceToWorldSpace(b2Body_GetPosition(entity.value.bodyId));
+
+			if (entity.value.forcedVelocity) { // Dash case
+				entity.value.CancelMove();
+				entity.value.wantedVelocity = *entity.value.forcedVelocity;
+				entity.value.control = 1.0f;
+			} else if (entity.value.pursueTarget) { // Pursue target case
+				auto iter = entityLookup.find(*entity.value.pursueTarget);
+
+				if (iter == entityLookup.end()) {
+					entity.value.pursueTarget = std::nullopt;
+				} else {
+					auto targetWorldPosition = PhysicsSpaceToWorldSpace(b2Body_GetPosition(iter->value.bodyId));
+
+					if (!entity.value.activePath || (entity.value.activePath->GetDestination() - targetWorldPosition).length_squared() > 64.0f) {
+						MoveTo(entity.key, targetWorldPosition);
+					}
+				}
+			}
+
+			if (entity.value.movementPaused > 0) {
+				entity.value.wantedVelocity = b2Vec2_zero;
+			} else if (entity.value.activePath) {
+				if ((entity.value.activePath->GetNextWaypoint() - worldPosition).length_squared() < entity.value.movementSpeed * entity.value.movementSpeed) {
+					entity.value.activePath->PopWaypoint();
+
+					if (!entity.value.activePath->IsValid()) {
+						entity.value.activePath = nullptr;
+						entity.value.wantedVelocity = b2Vec2_zero;
+					}
+				}
+
+				if (entity.value.activePath) {
+					entity.value.wantedVelocity = WorldSpaceToPhysicsSpace(20.0f * entity.value.movementSpeed * (entity.value.activePath->GetNextWaypoint() - worldPosition).normalized());
+				}
+			}
+
 			entity.value.control = 0.04f + 0.96f * entity.value.control;
 			b2Vec2 currentVelocity = b2Body_GetLinearVelocity(entity.value.bodyId);
 			b2Vec2 newVelocity = (1.0f - 0.5f * entity.value.control) * currentVelocity + 0.5f * entity.value.control * entity.value.wantedVelocity;
@@ -90,14 +143,36 @@ public:
 		b2World_Step(worldId, 1 / 20.0f, 10);
 	}
 
-	void SetWantedVelocity(int32_t p_id, Vector2 p_velocity) {
-		b2Vec2 physicsVelocity = WorldSpaceToPhysicsSpace(p_velocity);
-		entityLookup[p_id].wantedVelocity = physicsVelocity;
-	}
+	/* 	void CollisionAvoidancePass() {
+			for (auto &entityA : entityLookup) {
+				if (entityA.value.control < 0.8) {
+					continue;
+				}
 
-	void ResetControl(int32_t p_id) {
-		entityLookup[p_id].control = 1.0f;
-	}
+				auto positionA = b2Body_GetPosition(entityA.value.bodyId);
+
+				for (auto &entityB : entityLookup) {
+					if (entityA.key == entityB.key) {
+						continue;
+					}
+
+					auto positionB = b2Body_GetPosition(entityB.value.bodyId);
+					if (b2Length(positionA - positionB) > 2.0f * (entityA.value.physicsRadius + entityB.value.physicsRadius)) {
+						continue;
+					}
+
+					auto dotProduct = b2Dot(positionB - positionA, entityA.value.wantedVelocity);
+					auto cosineSquared = dotProduct * dotProduct / (b2LengthSquared(positionB - positionA) * b2LengthSquared(entityA.value.wantedVelocity));
+					if (cosineSquared < 0.8f) {
+						continue;
+					}
+
+					if (b2Dot(positionB - positionA, entityA.value.wantedVelocity)) {
+						entityA.value.wantedVelocity = b2RotateVector(b2MakeRot(0.6f), entityA.value.wantedVelocity);
+					}
+				}
+			}
+		} */
 
 	void ApplyImpulse(int32_t p_id, Vector2 p_impulse) {
 		auto &entity = entityLookup[p_id];
@@ -108,16 +183,23 @@ public:
 		entity.control = std::max(0.0f, entity.control - impact);
 	}
 
-	Vector2 GetEntityPosition(int32_t p_id) {
-		return PhysicsSpaceToWorldSpace(b2Body_GetPosition((entityLookup[p_id].bodyId)));
+	Box2dPhysics::MovementMode GetEntityMovementMode(int32_t p_id) {
+		auto &entity = entityLookup[p_id];
+		if (entity.pursueTarget) {
+			return Box2dPhysics::MovementMode::TARGET;
+		}
+		if (entity.activePath) {
+			return Box2dPhysics::MovementMode::DESTINATION;
+		}
+		return Box2dPhysics::MovementMode::NONE;
 	}
 
-	void CreateEntity(int32_t p_id, Vector2 p_position, float p_radius, float p_weight) {
-		p_radius = p_radius / PHYSICS_WORLD_SCALE;
+	void CreateEntity(int32_t p_id, Vector2 p_position, float p_radius, float p_weight, float p_speed) {
+		float physicsRadius = p_radius / PHYSICS_WORLD_SCALE;
 
 		b2Circle circle;
 		circle.center = b2Vec2_zero;
-		circle.radius = p_radius;
+		circle.radius = physicsRadius;
 
 		b2BodyDef bodyDef = b2DefaultBodyDef();
 		bodyDef.position = WorldSpaceToPhysicsSpace(p_position);
@@ -125,13 +207,14 @@ public:
 		b2BodyId bodyId = b2CreateBody(worldId, &bodyDef);
 
 		b2ShapeDef shapeDef = b2DefaultShapeDef();
-		shapeDef.density = p_weight / (Math_PI * p_radius * p_radius);
+		shapeDef.density = p_weight / (Math_PI * physicsRadius * physicsRadius);
 		b2CreateCircleShape(bodyId, &shapeDef, &circle);
 
-		entityLookup[p_id] = PhysicsEntity(bodyId, p_weight);
+		entityLookup[p_id] = PhysicsEntity(bodyId, p_weight, p_radius, p_speed);
 	}
 
 	void CreateObstacle(int32_t p_id, const Vector2 *p_outline, int32_t p_outlineCount) {
+		pathfinder.AddObstacleOutline(p_id, p_outline, p_outlineCount);
 		Vector2 approxCenter = Vector2(0, 0);
 
 		for (int32_t i = 0; i < std::min(64, p_outlineCount); i++) {
@@ -165,9 +248,46 @@ public:
 
 	void DestroyEntity(int32_t p_id) {
 		auto iter = entityLookup.find(p_id);
+		iter->value.CancelMove();
 		b2DestroyBody(iter->value.bodyId);
 		entityLookup.remove(iter);
 	}
+
+	bool MoveTo(int32_t p_id, Vector2 destination) {
+		auto &entity = entityLookup[p_id];
+		entity.CancelMove();
+
+		auto worldPosition = PhysicsSpaceToWorldSpace(b2Body_GetPosition(entity.bodyId));
+		auto path = pathfinder.ComputePath(worldPosition, destination, entityLookup[p_id].radius);
+
+		if (path->IsValid()) {
+			entity.activePath = path;
+			return true;
+		}
+
+		delete path;
+		entity.activePath = nullptr;
+		return false;
+	}
+
+	bool MoveToTarget(int32_t p_id, int32_t p_targetId) {
+		if (entityLookup.find(p_targetId) != entityLookup.end()) {
+			entityLookup[p_id].pursueTarget = p_targetId;
+			return true;
+		}
+		return false;
+	}
+
+	void CancelMove(int32_t p_id) {
+		auto &entity = entityLookup[p_id];
+		entity.CancelMove();
+		entity.pursueTarget = std::nullopt;
+	}
+
+	b2WorldId worldId;
+	HashMap<int32_t, b2BodyId> obstacleLookup;
+	HashMap<int32_t, PhysicsEntity> entityLookup;
+	Pathfinder pathfinder;
 };
 
 void Box2dPhysics::_notification(int p_what) {
@@ -175,14 +295,25 @@ void Box2dPhysics::_notification(int p_what) {
 
 void Box2dPhysics::_bind_methods() {
 	ClassDB::bind_method(D_METHOD("step_world"), &Box2dPhysics::step_world);
-	ClassDB::bind_method(D_METHOD("add_entity", "id", "radius", "weight", "position"), &Box2dPhysics::add_entity);
+	ClassDB::bind_method(D_METHOD("add_entity", "id", "radius", "weight", "position", "speed"), &Box2dPhysics::add_entity);
 	ClassDB::bind_method(D_METHOD("remove_entity", "id"), &Box2dPhysics::remove_entity);
 	ClassDB::bind_method(D_METHOD("get_entity_position", "id"), &Box2dPhysics::get_entity_position);
+	ClassDB::bind_method(D_METHOD("get_entity_movement_mode", "id"), &Box2dPhysics::get_entity_movement_mode);
 	ClassDB::bind_method(D_METHOD("apply_impulse", "id", "impulse"), &Box2dPhysics::apply_impulse);
 	ClassDB::bind_method(D_METHOD("reset_control", "id"), &Box2dPhysics::reset_control);
-	ClassDB::bind_method(D_METHOD("set_wanted_velocity", "id", "velocity"), &Box2dPhysics::set_wanted_velocity);
+	ClassDB::bind_method(D_METHOD("set_forced_velocity", "id", "velocity"), &Box2dPhysics::set_forced_velocity);
+	ClassDB::bind_method(D_METHOD("clear_forced_velocity", "id"), &Box2dPhysics::clear_forced_velocity);
+	ClassDB::bind_method(D_METHOD("move_to", "id", "destination"), &Box2dPhysics::move_to);
+	ClassDB::bind_method(D_METHOD("move_to_target", "id", "target", "target_distance"), &Box2dPhysics::move_to_target);
+	ClassDB::bind_method(D_METHOD("cancel_move", "id"), &Box2dPhysics::cancel_move);
+	ClassDB::bind_method(D_METHOD("pause_movement", "id"), &Box2dPhysics::pause_movement);
+	ClassDB::bind_method(D_METHOD("unpause_movement", "id"), &Box2dPhysics::unpause_movement);
 	ClassDB::bind_method(D_METHOD("add_obstacle_outline", "id", "outline"), &Box2dPhysics::add_obstacle_outline);
 	ClassDB::bind_method(D_METHOD("remove_obstacle", "id"), &Box2dPhysics::remove_obstacle);
+
+	BIND_ENUM_CONSTANT(NONE);
+	BIND_ENUM_CONSTANT(DESTINATION);
+	BIND_ENUM_CONSTANT(TARGET);
 }
 
 Box2dPhysics::Box2dPhysics() {
@@ -197,8 +328,8 @@ void Box2dPhysics::step_world() {
 	static_cast<Box2dImpl *>(impl)->StepWorld();
 }
 
-void Box2dPhysics::add_entity(int32_t p_id, float p_radius, float p_weight, Vector2 p_position) {
-	static_cast<Box2dImpl *>(impl)->CreateEntity(p_id, p_position, p_radius, p_weight);
+void Box2dPhysics::add_entity(int32_t p_id, float p_radius, float p_weight, Vector2 p_position, float p_speed) {
+	static_cast<Box2dImpl *>(impl)->CreateEntity(p_id, p_position, p_radius, p_weight, p_speed);
 }
 
 void Box2dPhysics::remove_entity(int32_t p_id) {
@@ -206,7 +337,12 @@ void Box2dPhysics::remove_entity(int32_t p_id) {
 }
 
 Vector2 Box2dPhysics::get_entity_position(int32_t p_id) {
-	return static_cast<Box2dImpl *>(impl)->GetEntityPosition(p_id);
+	auto bodyId = static_cast<Box2dImpl *>(impl)->entityLookup[p_id].bodyId;
+	return PhysicsSpaceToWorldSpace(b2Body_GetPosition(bodyId));
+}
+
+Box2dPhysics::MovementMode Box2dPhysics::get_entity_movement_mode(int32_t p_id) {
+	return static_cast<Box2dImpl *>(impl)->GetEntityMovementMode(p_id);
 }
 
 void Box2dPhysics::apply_impulse(int32_t p_id, Vector2 p_impulse) {
@@ -214,11 +350,35 @@ void Box2dPhysics::apply_impulse(int32_t p_id, Vector2 p_impulse) {
 }
 
 void Box2dPhysics::reset_control(int32_t p_id) {
-	static_cast<Box2dImpl *>(impl)->ResetControl(p_id);
+	static_cast<Box2dImpl *>(impl)->entityLookup[p_id].control = 1.0f;
 }
 
-void Box2dPhysics::set_wanted_velocity(int32_t p_id, Vector2 p_velocity) {
-	static_cast<Box2dImpl *>(impl)->SetWantedVelocity(p_id, p_velocity);
+void Box2dPhysics::set_forced_velocity(int32_t p_id, Vector2 p_velocity) {
+	static_cast<Box2dImpl *>(impl)->entityLookup[p_id].forcedVelocity = WorldSpaceToPhysicsSpace(p_velocity);
+}
+
+void Box2dPhysics::clear_forced_velocity(int32_t p_id) {
+	static_cast<Box2dImpl *>(impl)->entityLookup[p_id].forcedVelocity = std::nullopt;
+}
+
+void Box2dPhysics::pause_movement(int32_t p_id) {
+	static_cast<Box2dImpl *>(impl)->entityLookup[p_id].movementPaused++;
+}
+
+void Box2dPhysics::unpause_movement(int32_t p_id) {
+	static_cast<Box2dImpl *>(impl)->entityLookup[p_id].movementPaused--;
+}
+
+bool Box2dPhysics::move_to(int32_t p_id, Vector2 p_position) {
+	return static_cast<Box2dImpl *>(impl)->MoveTo(p_id, p_position);
+}
+
+bool Box2dPhysics::move_to_target(int32_t p_id, int32_t p_targetId, float minimumDistance) {
+	return static_cast<Box2dImpl *>(impl)->MoveToTarget(p_id, p_targetId);
+}
+
+void Box2dPhysics::cancel_move(int32_t p_id) {
+	static_cast<Box2dImpl *>(impl)->CancelMove(p_id);
 }
 
 void Box2dPhysics::add_obstacle_outline(int32_t p_id, const PackedVector2Array &p_outline) {

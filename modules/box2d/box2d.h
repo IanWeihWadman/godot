@@ -43,18 +43,33 @@ protected:
 	static void _bind_methods();
 
 public:
+	enum MovementMode {
+		NONE,
+		DESTINATION,
+		TARGET
+	};
+
 	Box2dPhysics();
 	~Box2dPhysics();
 
 	void step_world();
-	void add_entity(int32_t p_id, float p_radius, float p_weight, Vector2 p_position);
+	void add_entity(int32_t p_id, float p_radius, float p_weight, Vector2 p_position, float p_speed);
 	void remove_entity(int32_t p_id);
 	Vector2 get_entity_position(int32_t p_id);
+	MovementMode get_entity_movement_mode(int32_t p_id);
 	void apply_impulse(int32_t p_id, Vector2 impulse);
-	void set_wanted_velocity(int32_t p_id, Vector2 velocity);
+	void set_forced_velocity(int32_t p_id, Vector2 velocity);
+	void clear_forced_velocity(int32_t p_id);
+	bool move_to(int32_t p_id, Vector2 position);
+	bool move_to_target(int32_t p_id, int32_t p_targetId, float minimumDistance);
+	void pause_movement(int32_t p_id);
+	void unpause_movement(int32_t p_id);
+	void cancel_move(int32_t p_id);
 	void reset_control(int32_t p_id);
 	void add_obstacle_outline(int32_t p_id, const PackedVector2Array &p_outline);
 	void remove_obstacle(int32_t p_id);
 };
+
+VARIANT_ENUM_CAST(Box2dPhysics::MovementMode);
 
 #endif // BOX2D_PHYSICS_H
