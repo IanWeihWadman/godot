@@ -292,7 +292,7 @@ Path *Pathfinder::ReconstructPath(Vector2i origin, Vector2i destination, float r
 	path->AddWaypoint(PathgridToWorld(waypoints[0]));
 	int32_t lastNeededWaypoint = 0;
 
-	for (int32_t i = 1; i < waypoints.size() - 1; i++) {
+	for (uint32_t i = 1; i < waypoints.size() - 1; i++) {
 		if (!LinearPathExists(waypoints[lastNeededWaypoint], waypoints[i + 1], radius)) {
 			path->AddWaypoint(PathgridToWorld(waypoints[i]));
 			lastNeededWaypoint = i;
@@ -306,7 +306,11 @@ void Pathfinder::AddObstacleOutline(int32_t id, const Vector2 *outline, int32_t 
 	static_cast<PathfinderImpl *>(impl)->map.AddObstacleOutline(id, outline, outlineCount);
 }
 
-bool Pathfinder::LinearPathExists(Vector2i origin, Vector2i destination, float radius) {
+bool Pathfinder::LinearPathExists(Vector2 origin, Vector2 destination, float radius) {
+	return LinearPathExistsInternal(WorldToPathgrid(origin), WorldToPathgrid(destination), radius);
+}
+
+bool Pathfinder::LinearPathExistsInternal(Vector2i origin, Vector2i destination, float radius) {
 	PathfinderImpl *implementation = static_cast<PathfinderImpl *>(impl);
 
 	int32_t x0 = origin.x;

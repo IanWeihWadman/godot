@@ -62,6 +62,7 @@ public:
 	void clear_forced_velocity(int32_t p_id);
 	bool move_to(int32_t p_id, Vector2 position);
 	bool move_to_target(int32_t p_id, int32_t p_targetId, float minimumDistance);
+	bool linear_path_exists(Vector2 origin, Vector2 destination, float radius);
 	void pause_movement(int32_t p_id);
 	void unpause_movement(int32_t p_id);
 	void cancel_move(int32_t p_id);

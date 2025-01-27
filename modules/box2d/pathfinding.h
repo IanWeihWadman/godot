@@ -53,6 +53,7 @@ class Pathfinder {
 private:
 	void *impl;
 
+	bool LinearPathExistsInternal(Vector2i origin, Vector2i destination, float radius);
 	Path *ComputePathInternal(Vector2i origin, Vector2i destination, float radius);
 	Path *ReconstructPath(Vector2i origin, Vector2i destination, float radius);
 
@@ -61,8 +62,8 @@ public:
 	~Pathfinder();
 
 	void AddObstacleOutline(int32_t p_id, const Vector2 *p_outline, int32_t p_outlineCount);
+	bool LinearPathExists(Vector2 origin, Vector2 destination, float radius);
 	Path *ComputePath(Vector2 origin, Vector2 destination, float radius);
-	bool LinearPathExists(Vector2i origin, Vector2i destination, float radius);
 };
 
 #endif

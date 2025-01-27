@@ -51,6 +51,15 @@ Vector2 PhysicsSpaceToWorldSpace(b2Vec2 p_b2Vec) {
 } //namespace
 
 struct Box2dImpl {
+	struct PursueTargetInfo {
+		PursueTargetInfo(int32_t p_targetId, float p_targetDistance) :
+				targetId{ p_targetId },
+				targetDistance{ p_targetDistance } {}
+
+		int32_t targetId;
+		float targetDistance;
+	};
+
 	struct PhysicsEntity {
 		PhysicsEntity() = default;
 
@@ -73,7 +82,7 @@ struct Box2dImpl {
 
 		b2Vec2 wantedVelocity;
 		std::optional<b2Vec2> forcedVelocity;
-		std::optional<int32_t> pursueTarget;
+		std::optional<PursueTargetInfo> pursueTarget;
 		b2BodyId bodyId;
 		float weight;
 		float control;
@@ -98,13 +107,14 @@ struct Box2dImpl {
 
 		for (auto &entity : entityLookup) {
 			auto worldPosition = PhysicsSpaceToWorldSpace(b2Body_GetPosition(entity.value.bodyId));
+			bool targetTooClose = false;
 
 			if (entity.value.forcedVelocity) { // Dash case
 				entity.value.CancelMove();
 				entity.value.wantedVelocity = *entity.value.forcedVelocity;
 				entity.value.control = 1.0f;
 			} else if (entity.value.pursueTarget) { // Pursue target case
-				auto iter = entityLookup.find(*entity.value.pursueTarget);
+				auto iter = entityLookup.find(entity.value.pursueTarget->targetId);
 
 				if (iter == entityLookup.end()) {
 					entity.value.pursueTarget = std::nullopt;
@@ -114,13 +124,17 @@ struct Box2dImpl {
 					if (!entity.value.activePath || (entity.value.activePath->GetDestination() - targetWorldPosition).length_squared() > 64.0f) {
 						MoveTo(entity.key, targetWorldPosition);
 					}
+
+					if ((worldPosition - targetWorldPosition).length() < entity.value.pursueTarget->targetDistance) {
+						targetTooClose = true;
+					}
 				}
 			}
 
-			if (entity.value.movementPaused > 0 || (!entity.value.activePath && !entity.value.forcedVelocity)) {
+			if (entity.value.movementPaused > 0 || (!entity.value.activePath && !entity.value.forcedVelocity) || targetTooClose) {
 				entity.value.wantedVelocity = b2Vec2_zero;
 			} else if (entity.value.activePath) {
-				if ((entity.value.activePath->GetNextWaypoint() - worldPosition).length_squared() < entity.value.movementSpeed * entity.value.movementSpeed) {
+				if ((entity.value.activePath->GetNextWaypoint() - worldPosition).length_squared() < 25.0f * 25.0f) {
 					entity.value.activePath->PopWaypoint();
 
 					if (!entity.value.activePath->IsValid()) {
@@ -271,9 +285,9 @@ struct Box2dImpl {
 		return false;
 	}
 
-	bool MoveToTarget(int32_t p_id, int32_t p_targetId) {
+	bool MoveToTarget(int32_t p_id, int32_t p_targetId, float p_targetDistance) {
 		if (entityLookup.find(p_targetId) != entityLookup.end()) {
-			entityLookup[p_id].pursueTarget = p_targetId;
+			entityLookup[p_id].pursueTarget = PursueTargetInfo(p_targetId, p_targetDistance);
 			return true;
 		}
 		return false;
@@ -306,6 +320,7 @@ void Box2dPhysics::_bind_methods() {
 	ClassDB::bind_method(D_METHOD("clear_forced_velocity", "id"), &Box2dPhysics::clear_forced_velocity);
 	ClassDB::bind_method(D_METHOD("move_to", "id", "destination"), &Box2dPhysics::move_to);
 	ClassDB::bind_method(D_METHOD("move_to_target", "id", "target", "target_distance"), &Box2dPhysics::move_to_target);
+	ClassDB::bind_method(D_METHOD("linear_path_exists", "origin", "destination", "radius"), &Box2dPhysics::linear_path_exists);
 	ClassDB::bind_method(D_METHOD("cancel_move", "id"), &Box2dPhysics::cancel_move);
 	ClassDB::bind_method(D_METHOD("pause_movement", "id"), &Box2dPhysics::pause_movement);
 	ClassDB::bind_method(D_METHOD("unpause_movement", "id"), &Box2dPhysics::unpause_movement);
@@ -374,8 +389,12 @@ bool Box2dPhysics::move_to(int32_t p_id, Vector2 p_position) {
 	return static_cast<Box2dImpl *>(impl)->MoveTo(p_id, p_position);
 }
 
-bool Box2dPhysics::move_to_target(int32_t p_id, int32_t p_targetId, float minimumDistance) {
-	return static_cast<Box2dImpl *>(impl)->MoveToTarget(p_id, p_targetId);
+bool Box2dPhysics::move_to_target(int32_t p_id, int32_t p_targetId, float p_targetDistance) {
+	return static_cast<Box2dImpl *>(impl)->MoveToTarget(p_id, p_targetId, p_targetDistance);
+}
+
+bool Box2dPhysics::linear_path_exists(Vector2 origin, Vector2 destination, float radius) {
+	return static_cast<Box2dImpl *>(impl)->pathfinder.LinearPathExists(origin, destination, radius);
 }
 
 void Box2dPhysics::cancel_move(int32_t p_id) {
