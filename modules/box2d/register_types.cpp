@@ -29,6 +29,7 @@
 /**************************************************************************/
 
 #include "register_types.h"
+#include "physics_test.h"
 
 #include "box2d.h"
 
@@ -37,6 +38,9 @@
 void initialize_box2d_module(ModuleInitializationLevel p_level) {
 	if (p_level == MODULE_INITIALIZATION_LEVEL_SCENE) {
 		GDREGISTER_CLASS(Box2dPhysics);
+	}
+	if (p_level == MODULE_INITIALIZATION_LEVEL_EDITOR) {
+		RunPhysicsTests();
 	}
 }
 

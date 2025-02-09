@@ -118,6 +118,7 @@ struct Box2dImpl {
 
 				if (iter == entityLookup.end()) {
 					entity.value.pursueTarget = std::nullopt;
+					entity.value.activePath = nullptr;
 				} else {
 					auto targetWorldPosition = PhysicsSpaceToWorldSpace(b2Body_GetPosition(iter->value.bodyId));
 

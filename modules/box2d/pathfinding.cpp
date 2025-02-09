@@ -212,7 +212,7 @@ Path *Pathfinder::ComputePath(Vector2 origin, Vector2 destination, float radius)
 }
 
 Path *Pathfinder::ComputePathInternal(Vector2i origin, Vector2i destination, float radius) {
-	if (LinearPathExists(origin, destination, radius)) {
+	if (LinearPathExistsInternal(origin, destination, radius)) {
 		Path *result = new Path();
 		result->AddWaypoint(destination);
 		result->AddWaypoint(origin);
@@ -293,7 +293,7 @@ Path *Pathfinder::ReconstructPath(Vector2i origin, Vector2i destination, float r
 	int32_t lastNeededWaypoint = 0;
 
 	for (uint32_t i = 1; i < waypoints.size() - 1; i++) {
-		if (!LinearPathExists(waypoints[lastNeededWaypoint], waypoints[i + 1], radius)) {
+		if (!LinearPathExistsInternal(waypoints[lastNeededWaypoint], waypoints[i + 1], radius)) {
 			path->AddWaypoint(PathgridToWorld(waypoints[i]));
 			lastNeededWaypoint = i;
 		}
