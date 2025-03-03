@@ -476,7 +476,7 @@ Patches:
 ## libbacktrace
 
 - Upstream: https://github.com/ianlancetaylor/libbacktrace
-- Version: git (1db85642e3fca189cf4e076f840a45d6934b2456, 2024)
+- Version: git (4d2dd0b172f2c9192f83ba93425f868f2a13c553, 2022)
 - License: BSD-3-Clause
 
 Files extracted from upstream source:
@@ -627,6 +627,7 @@ File extracted from upstream release tarball:
 Patches:
 
 - `0001-msvc-2019-psa-redeclaration.patch` (GH-90535)
+- `0002-pr-9981-defragment-incoming-tls-handshake-messages.patch` (GH-103247)
 
 
 ## meshoptimizer

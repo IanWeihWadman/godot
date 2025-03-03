@@ -411,12 +411,16 @@ void DisplayServerMacOS::_dispatch_input_event(const Ref<InputEvent> &p_event) {
 				}
 			}
 		} else {
-			// Send to all windows.
+			// Send to all windows. Copy all pending callbacks, since callback can erase window.
+			Vector<Callable> cbs;
 			for (KeyValue<WindowID, WindowData> &E : windows) {
 				Callable callable = E.value.input_event_callback;
 				if (callable.is_valid()) {
-					callable.call(p_event);
+					cbs.push_back(callable);
 				}
+			}
+			for (const Callable &cb : cbs) {
+				cb.call(p_event);
 			}
 		}
 		in_dispatch_input_event = false;
@@ -3787,8 +3791,11 @@ DisplayServerMacOS::DisplayServerMacOS(const String &p_rendering_driver, WindowM
 #if defined(VULKAN_ENABLED)
 #if defined(__x86_64__)
 	bool fallback_to_vulkan = GLOBAL_GET("rendering/rendering_device/fallback_to_vulkan");
+	if (!fallback_to_vulkan) {
+		WARN_PRINT("Metal is not supported on Intel Macs, switching to Vulkan.");
+	}
 	// Metal rendering driver not available on Intel.
-	if (fallback_to_vulkan && rendering_driver == "metal") {
+	if (rendering_driver == "metal") {
 		rendering_driver = "vulkan";
 		OS::get_singleton()->set_current_rendering_driver_name(rendering_driver);
 	}
