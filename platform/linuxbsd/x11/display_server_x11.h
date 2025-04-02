@@ -28,8 +28,7 @@
 /* SOFTWARE OR THE USE OR OTHER DEALINGS IN THE SOFTWARE.                 */
 /**************************************************************************/
 
-#ifndef DISPLAY_SERVER_X11_H
-#define DISPLAY_SERVER_X11_H
+#pragma once
 
 #ifdef X11_ENABLED
 
@@ -395,6 +394,8 @@ class DisplayServerX11 : public DisplayServer {
 	void _set_window_taskbar_pager_enabled(Window p_window, bool p_enabled);
 	Rect2i _screens_get_full_rect() const;
 
+	void initialize_tts() const;
+
 protected:
 	void _window_changed(XEvent *event);
 
@@ -420,10 +421,11 @@ public:
 #if defined(DBUS_ENABLED)
 	virtual bool is_dark_mode_supported() const override;
 	virtual bool is_dark_mode() const override;
+	virtual Color get_accent_color() const override;
 	virtual void set_system_theme_change_callback(const Callable &p_callable) override;
 
-	virtual Error file_dialog_show(const String &p_title, const String &p_current_directory, const String &p_filename, bool p_show_hidden, FileDialogMode p_mode, const Vector<String> &p_filters, const Callable &p_callback) override;
-	virtual Error file_dialog_with_options_show(const String &p_title, const String &p_current_directory, const String &p_root, const String &p_filename, bool p_show_hidden, FileDialogMode p_mode, const Vector<String> &p_filters, const TypedArray<Dictionary> &p_options, const Callable &p_callback) override;
+	virtual Error file_dialog_show(const String &p_title, const String &p_current_directory, const String &p_filename, bool p_show_hidden, FileDialogMode p_mode, const Vector<String> &p_filters, const Callable &p_callback, WindowID p_window_id) override;
+	virtual Error file_dialog_with_options_show(const String &p_title, const String &p_current_directory, const String &p_root, const String &p_filename, bool p_show_hidden, FileDialogMode p_mode, const Vector<String> &p_filters, const TypedArray<Dictionary> &p_options, const Callable &p_callback, WindowID p_window_id) override;
 #endif
 
 	virtual void beep() const override;
@@ -556,6 +558,8 @@ public:
 	virtual Key keyboard_get_keycode_from_physical(Key p_keycode) const override;
 	virtual Key keyboard_get_label_from_physical(Key p_keycode) const override;
 
+	virtual bool color_picker(const Callable &p_callback) override;
+
 	virtual void process_events() override;
 
 	virtual void release_rendering_thread() override;
@@ -578,5 +582,3 @@ public:
 };
 
 #endif // X11_ENABLED
-
-#endif // DISPLAY_SERVER_X11_H

@@ -137,7 +137,7 @@ void CodeEdit::_notification(int p_what) {
 
 						Point2 round_ofs = hint_ofs + theme_cache.code_hint_style->get_offset() + Vector2(0, theme_cache.font->get_ascent(theme_cache.font_size) + font_height * i + yofs);
 						round_ofs = round_ofs.round();
-						draw_string(theme_cache.font, round_ofs, line.replace(String::chr(0xFFFF), ""), HORIZONTAL_ALIGNMENT_LEFT, -1, theme_cache.font_size, theme_cache.code_hint_color);
+						draw_string(theme_cache.font, round_ofs, line.remove_char(0xFFFF), HORIZONTAL_ALIGNMENT_LEFT, -1, theme_cache.font_size, theme_cache.code_hint_color);
 						if (end > 0) {
 							// Draw an underline for the currently edited function parameter.
 							const Vector2 b = hint_ofs + theme_cache.code_hint_style->get_offset() + Vector2(begin, font_height + font_height * i + yofs);
@@ -963,7 +963,7 @@ void CodeEdit::indent_lines() {
 	for (Point2i line_range : line_ranges) {
 		for (int i = line_range.x; i <= line_range.y; i++) {
 			const String line_text = get_line(i);
-			if (line_text.size() == 0) {
+			if (line_text.is_empty()) {
 				// Ignore empty lines.
 				continue;
 			}
@@ -1599,7 +1599,7 @@ bool CodeEdit::can_fold_line(int p_line) const {
 		return false;
 	}
 
-	if (p_line + 1 >= get_line_count() || get_line(p_line).strip_edges().size() == 0) {
+	if (p_line + 1 >= get_line_count() || get_line(p_line).strip_edges().is_empty()) {
 		return false;
 	}
 
@@ -1658,7 +1658,7 @@ bool CodeEdit::can_fold_line(int p_line) const {
 	/* Otherwise check indent levels. */
 	int start_indent = get_indent_level(p_line);
 	for (int i = p_line + 1; i < get_line_count(); i++) {
-		if (is_in_string(i) != -1 || is_in_comment(i) != -1 || get_line(i).strip_edges().size() == 0) {
+		if (is_in_string(i) != -1 || is_in_comment(i) != -1 || get_line(i).strip_edges().is_empty()) {
 			continue;
 		}
 		return (get_indent_level(i) > start_indent);
@@ -1711,7 +1711,7 @@ void CodeEdit::fold_line(int p_line) {
 		} else {
 			int start_indent = get_indent_level(p_line);
 			for (int i = p_line + 1; i <= line_count; i++) {
-				if (get_line(i).strip_edges().size() == 0) {
+				if (get_line(i).strip_edges().is_empty()) {
 					continue;
 				}
 				if (get_indent_level(i) > start_indent) {
@@ -1872,7 +1872,8 @@ bool CodeEdit::is_line_code_region_start(int p_line) const {
 	if (is_in_string(p_line) != -1) {
 		return false;
 	}
-	return get_line(p_line).strip_edges().begins_with(code_region_start_string);
+	Vector<String> split = get_line(p_line).strip_edges().split_spaces(1);
+	return split.size() > 0 && split[0] == code_region_start_string;
 }
 
 bool CodeEdit::is_line_code_region_end(int p_line) const {
@@ -1883,7 +1884,8 @@ bool CodeEdit::is_line_code_region_end(int p_line) const {
 	if (is_in_string(p_line) != -1) {
 		return false;
 	}
-	return get_line(p_line).strip_edges().begins_with(code_region_end_string);
+	Vector<String> split = get_line(p_line).strip_edges().split_spaces(1);
+	return split.size() > 0 && split[0] == code_region_end_string;
 }
 
 /* Delimiters */
@@ -1956,7 +1958,7 @@ String CodeEdit::get_delimiter_end_key(int p_delimiter_idx) const {
 }
 
 Point2 CodeEdit::get_delimiter_start_position(int p_line, int p_column) const {
-	if (delimiters.size() == 0) {
+	if (delimiters.is_empty()) {
 		return Point2(-1, -1);
 	}
 	ERR_FAIL_INDEX_V(p_line, get_line_count(), Point2(-1, -1));
@@ -2007,7 +2009,7 @@ Point2 CodeEdit::get_delimiter_start_position(int p_line, int p_column) const {
 }
 
 Point2 CodeEdit::get_delimiter_end_position(int p_line, int p_column) const {
-	if (delimiters.size() == 0) {
+	if (delimiters.is_empty()) {
 		return Point2(-1, -1);
 	}
 	ERR_FAIL_INDEX_V(p_line, get_line_count(), Point2(-1, -1));
@@ -2112,7 +2114,7 @@ String CodeEdit::get_text_for_code_completion() const {
 			completion_text += line.substr(0, get_caret_column());
 			/* Not unicode, represents the caret. */
 			completion_text += String::chr(0xFFFF);
-			completion_text += line.substr(get_caret_column(), line.size());
+			completion_text += line.substr(get_caret_column());
 		} else {
 			completion_text += line;
 		}
@@ -2411,7 +2413,7 @@ String CodeEdit::get_text_with_cursor_char(int p_line, int p_column) const {
 			result += line_text.substr(0, p_column);
 			/* Not unicode, represents the cursor. */
 			result += String::chr(0xFFFF);
-			result += line_text.substr(p_column, line_text.size());
+			result += line_text.substr(p_column);
 		} else {
 			result += line_text;
 		}
@@ -3058,7 +3060,7 @@ void CodeEdit::_update_code_region_tags() {
 
 /* Delimiters */
 void CodeEdit::_update_delimiter_cache(int p_from_line, int p_to_line) {
-	if (delimiters.size() == 0) {
+	if (delimiters.is_empty()) {
 		return;
 	}
 
@@ -3208,7 +3210,7 @@ void CodeEdit::_update_delimiter_cache(int p_from_line, int p_to_line) {
 }
 
 int CodeEdit::_is_in_delimiter(int p_line, int p_column, DelimiterType p_type) const {
-	if (delimiters.size() == 0 || p_line >= delimiter_cache.size()) {
+	if (delimiters.is_empty() || p_line >= delimiter_cache.size()) {
 		return -1;
 	}
 	ERR_FAIL_INDEX_V(p_line, get_line_count(), 0);
@@ -3348,8 +3350,8 @@ void CodeEdit::_set_delimiters(const TypedArray<String> &p_delimiters, Delimiter
 			continue;
 		}
 
-		const String start_key = key.get_slice(" ", 0);
-		const String end_key = key.get_slice_count(" ") > 1 ? key.get_slice(" ", 1) : String();
+		const String start_key = key.get_slicec(' ', 0);
+		const String end_key = key.get_slice_count(" ") > 1 ? key.get_slicec(' ', 1) : String();
 
 		_add_delimiter(start_key, end_key, end_key.is_empty(), p_type);
 	}
@@ -3422,7 +3424,7 @@ void CodeEdit::_filter_code_completion_candidates_impl() {
 		GDVIRTUAL_CALL(_filter_code_completion_candidates, completion_options_sources, completion_options);
 
 		/* No options to complete, cancel. */
-		if (completion_options.size() == 0) {
+		if (completion_options.is_empty()) {
 			cancel_code_completion();
 			return;
 		}
@@ -3654,7 +3656,7 @@ void CodeEdit::_filter_code_completion_candidates_impl() {
 	}
 
 	/* No options to complete, cancel. */
-	if (code_completion_options_new.size() == 0) {
+	if (code_completion_options_new.is_empty()) {
 		cancel_code_completion();
 		return;
 	}
